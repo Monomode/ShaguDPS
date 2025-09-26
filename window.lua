@@ -209,25 +209,45 @@ local function barTooltipShow()
   GameTooltip:AddLine(" ")
   GameTooltip:AddLine("Details:")
 
-  for attack, damage in spairs(segment[this.unit], sort_algorithms.single_spell) do
-    if attack and not internals[attack] then
-      local percent = damage == 0 and 0 or round(damage / segment[this.unit]["_sum"] * 100,1)
-      if segment[this.unit]["_effective"] and segment[this.unit]["_effective"][attack] then
-        -- heal / effective heal
-        local effective = segment[this.unit]["_effective"][attack]
-        local epercent = effective == 0 and 0 or round(effective / segment[this.unit]["_esum"] * 100,1)
+-- Tooltip breakdown for a unit's attacks with DPS per spell
+local function ShowUnitTooltip(this, segment)
+  -- ensure segment exists
+  if not segment[this.unit] then return end
 
-        local str = string.format("|cffcc8888+%s|cffffffff %s (%.1f%%)", damage - effective, effective, epercent)
+  local unitData = segment[this.unit]
+  local total = unitData["_sum"] or 0
+
+  -- calculate total combat time
+  local combatStart = unitData["_ctime"] or GetTime()
+  local combatTime = GetTime() - combatStart
+  if combatTime <= 0 then combatTime = 1 end -- avoid div/0
+
+  -- loop through all attacks
+  for attack, damage in spairs(unitData, sort_algorithms.single_spell) do
+    if attack and not internals[attack] then
+      local percent = (damage == 0 or total == 0) and 0 or round(damage / total * 100, 1)
+      local dps = round(damage / combatTime, 1)
+
+      if unitData["_effective"] and unitData["_effective"][attack] then
+        -- Healing case
+        local effective = unitData["_effective"][attack]
+        local esum = unitData["_esum"] or 0
+        local epercent = (effective == 0 or esum == 0) and 0 or round(effective / esum * 100, 1)
+        local overheal = damage - effective
+
+        local str = string.format("|cffcc8888+%s|cffffffff %s (%.1f%%)  %.1f DPS", overheal, effective, epercent, dps)
         GameTooltip:AddDoubleLine("|cffffffff" .. attack, str)
       else
-        -- damage
-        local str = string.format("|cffffffff %s (%.1f%%)", damage, percent)
+        -- Damage case
+        local str = string.format("%s (%.1f%%)  %.1f DPS", damage, percent, dps)
         GameTooltip:AddDoubleLine("|cffffffff" .. attack, str)
       end
     end
   end
+
   GameTooltip:Show()
 end
+
 
 local function barTooltipHide()
   GameTooltip:Hide()
