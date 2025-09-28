@@ -242,7 +242,9 @@ local function barTooltipShow()
 
       -- percent and DPS calculations (safe fallbacks)
       local percent = (value == 0) and 0 or round(damage_val / value * 100, 1)
-      local dps = round(damage_val / (spellTime > 0 and spellTime or combatTime), 1)
+      -- local dps = round(damage_val / (spellTime > 0 and spellTime or combatTime), 1)
+      local dps = round(damage_val / spellTime, 1)
+
 
       -- format heal vs damage
       if unitData["_effective"] and type(unitData["_effective"]) == "table" and unitData["_effective"][attack] then
