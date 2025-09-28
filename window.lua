@@ -210,29 +210,50 @@ local function barTooltipShow()
   end
 
   GameTooltip:AddLine(" ")
+  -- Details:
   GameTooltip:AddLine("Details:")
 
-  -- Breakdown per attack with DPS
   local unitData = segment[this.unit]
-  local combatTime = ctime > 0 and ctime or 1
+  if not unitData then
+    GameTooltip:Show()
+    return
+  end
 
-  for attack, damage in spairs(unitData, sort_algorithms.single_spell) do
-    if attack and not internals[attack] and tonumber(damage) then
-      local percent = (value == 0) and 0 or round(damage / value * 100, 1)
-      local dps = round(damage / combatTime, 1)
+  -- Shagu stores elapsed seconds in _ctime already (use it directly)
+  local combatTime = unitData["_ctime"] or 1
+  if combatTime <= 0 then combatTime = 1 end
 
-      if unitData["_effective"] and unitData["_effective"][attack] then
-        -- Healing spell
-        local effective = unitData["_effective"][attack]
+  -- Iterate spells/attacks
+  for attack, entry in spairs(unitData, sort_algorithms.single_spell) do
+    if attack and not internals[attack] then
+      -- determine damage value (entry can be a number or a table)
+      local damage_val = 0
+      local spellTime = combatTime
+
+      if type(entry) == "table" then
+        damage_val = entry["_sum"] or 0
+        -- if the spell stores its own _ctime, prefer that (and ensure it's valid)
+        if entry["_ctime"] and tonumber(entry["_ctime"]) and tonumber(entry["_ctime"]) > 0 then
+          spellTime = tonumber(entry["_ctime"])
+        end
+      else
+        damage_val = tonumber(entry) or 0
+      end
+
+      -- percent and DPS calculations (safe fallbacks)
+      local percent = (value == 0) and 0 or round(damage_val / value * 100, 1)
+      local dps = round(damage_val / (spellTime > 0 and spellTime or combatTime), 1)
+
+      -- format heal vs damage
+      if unitData["_effective"] and type(unitData["_effective"]) == "table" and unitData["_effective"][attack] then
+        local effective = unitData["_effective"][attack] or 0
         local esum = unitData["_esum"] or 0
         local epercent = (esum == 0) and 0 or round(effective / esum * 100, 1)
-        local overheal = damage - effective
-
+        local overheal = damage_val - effective
         local str = string.format("|cffcc8888+%s|cffffffff %s (%.1f%%)  %.1f HPS", overheal, effective, epercent, dps)
         GameTooltip:AddDoubleLine("|cffffffff" .. attack, str)
       else
-        -- Damage spell
-        local str = string.format("%s (%.1f%%)  %.1f DPS", damage, percent, dps)
+        local str = string.format("%s (%.1f%%)  %.1f DPS", damage_val, percent, dps)
         GameTooltip:AddDoubleLine("|cffffffff" .. attack, str)
       end
     end
