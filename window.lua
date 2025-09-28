@@ -186,24 +186,26 @@ local function barTooltipShow()
   GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
 
   local segment = this.parent.segment
-  if not segment[this.unit] then return end
+  if not segment or not segment[this.unit] then return end
 
-  local value = segment[this.unit]["_sum"] or 0
-  local ctime = segment[this.unit]["_ctime"] or 1
-  local persec = round(value / ctime, 1)
+  local unitData = segment[this.unit]
+  local total = unitData["_sum"] or 0
+  local combatTime = unitData["_ctime"] or 1        -- HERE: use _ctime as elapsed seconds
+  if combatTime <= 0 then combatTime = 1 end
+
   local wid = this.parent:GetID()
+  local persec = round(total / combatTime, 1)
 
   GameTooltip:AddLine(this.title .. ":")
 
   if config[wid].view == 1 or config[wid].view == 2 then
-    GameTooltip:AddDoubleLine("|cffffffffDamage", "|cffffffff" .. value)
+    GameTooltip:AddDoubleLine("|cffffffffDamage", "|cffffffff" .. total)
     GameTooltip:AddDoubleLine("|cffffffffDamage Per Second", "|cffffffff" .. persec)
   elseif config[wid].view == 3 or config[wid].view == 4 then
-    local evalue = segment[this.unit]["_esum"] or 0
-    local epersec = round(evalue / ctime, 1)
-
+    local evalue = unitData["_esum"] or 0
+    local epersec = round(evalue / combatTime, 1)
     GameTooltip:AddDoubleLine("|cffffffffHealing", "|cffffffff" .. evalue)
-    GameTooltip:AddDoubleLine("|cffaaaaaaOverheal", "|cffcc8888+" .. (value - evalue))
+    GameTooltip:AddDoubleLine("|cffaaaaaaOverheal", "|cffcc8888+" .. (total - evalue))
     GameTooltip:AddLine(" ")
     GameTooltip:AddDoubleLine("|cffffffffHealing Per Second", "|cffffffff" .. epersec)
     GameTooltip:AddDoubleLine("|cffaaaaaaOverheal Per Second", "|cffcc8888+" .. (persec - epersec))
@@ -212,34 +214,55 @@ local function barTooltipShow()
   GameTooltip:AddLine(" ")
   GameTooltip:AddLine("Details:")
 
-  -- Breakdown per attack with DPS
-  local unitData = segment[this.unit]
-  local combatTime = ctime > 0 and ctime or 1
+  -- iterate spells/attacks
+  for attack, entry in spairs(unitData, sort_algorithms.single_spell) do
+    if attack and not internals[attack] then
+      -- get damage value (entry can be a number or a table)
+      local damage_val = 0
+      if type(entry) == "table" then
+        damage_val = entry["_sum"] or 0
+      else
+        damage_val = tonumber(entry) or 0
+      end
 
-  for attack, damage in spairs(unitData, sort_algorithms.single_spell) do
-    if attack and not internals[attack] and tonumber(damage) then
-      local percent = (value == 0) and 0 or round(damage / value * 100, 1)
-      local dps = round(damage / combatTime, 1)
+      if damage_val == 0 then
+        -- still show zero entries if you want, or skip
+        -- skip to reduce clutter: (uncomment to skip zero lines)
+        -- goto continue
+      end
 
-      if unitData["_effective"] and unitData["_effective"][attack] then
-        -- Healing spell
-        local effective = unitData["_effective"][attack]
+      -- percent of unit total
+      local percent = (total == 0) and 0 or round(damage_val / total * 100, 1)
+
+      -- if this spell has its own _ctime (time active), use it; otherwise use overall combatTime
+      local spellTime = combatTime
+      if type(entry) == "table" and entry["_ctime"] and tonumber(entry["_ctime"]] ) then
+        spellTime = tonumber(entry["_ctime"]) > 0 and tonumber(entry["_ctime"]) or combatTime
+      end
+      if not spellTime or spellTime <= 0 then spellTime = combatTime end
+
+      local dps = round(damage_val / spellTime, 1)
+
+      -- healing vs damage formatting
+      if unitData["_effective"] and type(unitData["_effective"]) == "table" and unitData["_effective"][attack] then
+        local effective = unitData["_effective"][attack] or 0
         local esum = unitData["_esum"] or 0
         local epercent = (esum == 0) and 0 or round(effective / esum * 100, 1)
-        local overheal = damage - effective
-
+        local overheal = damage_val - effective
         local str = string.format("|cffcc8888+%s|cffffffff %s (%.1f%%)  %.1f HPS", overheal, effective, epercent, dps)
         GameTooltip:AddDoubleLine("|cffffffff" .. attack, str)
       else
-        -- Damage spell
-        local str = string.format("%s (%.1f%%)  %.1f DPS", damage, percent, dps)
+        local str = string.format("%s (%.1f%%)  %.1f DPS", damage_val, percent, dps)
         GameTooltip:AddDoubleLine("|cffffffff" .. attack, str)
       end
+
+      --::continue::
     end
   end
 
   GameTooltip:Show()
 end
+
 
 
 local function barTooltipHide()
